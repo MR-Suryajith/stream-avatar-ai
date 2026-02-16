@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stream Avatars</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        overflow: hidden;
+      }
+
+      #avatar-container {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 15px;
+        max-width: 350px;
+        max-height: 80vh;
+        overflow: hidden;
+      }
+
+      .avatar-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        padding: 12px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+        animation: slideIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        position: relative;
+        overflow: hidden;
+      }
+
+      @keyframes slideIn {
+        0% {
+          transform: translateX(100%) scale(0.8);
+          opacity: 0;
+        }
+        100% {
+          transform: translateX(0) scale(1);
+          opacity: 1;
+        }
+      }
+
+      .avatar-img {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+        border-radius: 12px;
+        background: #2d2d2d;
+        display: block;
+      }
+
+      .avatar-info {
+        margin-top: 10px;
+        color: white;
+        text-align: center;
+      }
+
+      .username {
+        font-weight: bold;
+        font-size: 16px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .prompt {
+        font-size: 12px;
+        opacity: 0.9;
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .timer-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 4px;
+        background: #00ff88;
+        width: 100%;
+        transition: width 1s linear;
+      }
+
+      .fade-out {
+        animation: fadeOut 0.5s ease forwards;
+      }
+
+      @keyframes fadeOut {
+        to {
+          transform: translateX(100%) scale(0.8);
+          opacity: 0;
+        }
+      }
+
+      /* Floating animation for active avatars */
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-5px);
+        }
+      }
+
+      .avatar-card:hover {
+        animation: float 3s ease-in-out infinite;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="avatar-container"></div>
+
+    <script>
+      // CHANGE THIS TO YOUR NETLIFY URL AFTER DEPLOY!
+      const API_URL = "https://YOUR-SITE.netlify.app/api/avatars";
+
+      const container = document.getElementById("avatar-container");
+      const seenIds = new Set();
+
+      async function fetchAvatars() {
+        try {
+          const response = await fetch(API_URL);
+          const data = await response.json();
+
+          if (data.avatars) {
+            data.avatars.forEach((avatar) => {
+              if (!seenIds.has(avatar.id)) {
+                seenIds.add(avatar.id);
+                displayAvatar(avatar);
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching avatars:", error);
+        }
+      }
+
+      function displayAvatar(data) {
+        const card = document.createElement("div");
+        card.className = "avatar-card";
+        card.id = `avatar-${data.id}`;
+
+        card.innerHTML = `
+        <img class="avatar-img" src="${data.image}" alt="${data.username}" onerror="this.src='https://via.placeholder.com/512x200/667eea/ffffff?text=Avatar+Loading...'">
+        <div class="avatar-info">
+          <div class="username">@${data.username}</div>
+          <div class="prompt">${data.prompt}</div>
+        </div>
+        <div class="timer-bar"></div>
+      `;
+
+        container.appendChild(card);
+
+        // Animate timer bar (5 minutes)
+        const timerBar = card.querySelector(".timer-bar");
+        setTimeout(() => {
+          timerBar.style.width = "0%";
+        }, 100);
+
+        // Remove after 5 minutes
+        setTimeout(() => {
+          card.classList.add("fade-out");
+          setTimeout(() => {
+            card.remove();
+            seenIds.delete(data.id);
+          }, 500);
+        }, 300000); // 5 minutes
+      }
+
+      // Poll every 3 seconds
+      setInterval(fetchAvatars, 3000);
+      fetchAvatars(); // Initial load
+    </script>
+  </body>
+</html>

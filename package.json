@@ -1,0 +1,6 @@
+{
+  "name": "stream-avatar-api",
+  "version": "1.0.0",
+  "description": "Free avatar generator for Twitch/YouTube streams",
+  "type": "module"
+}
