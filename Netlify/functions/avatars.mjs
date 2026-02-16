@@ -1,4 +1,3 @@
-// OBS overlay calls this every few seconds to get new avatars
 export default async (request, context) => {
   const headers = {
     "Access-Control-Allow-Origin": "*",
@@ -12,6 +11,7 @@ export default async (request, context) => {
     JSON.stringify({
       avatars: avatars,
       count: avatars.length,
+      timestamp: new Date().toISOString(),
     }),
     { headers },
   );
