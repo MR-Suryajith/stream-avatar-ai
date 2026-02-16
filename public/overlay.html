@@ -3,12 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <title>Stream Avatars</title>
+
     <style>
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
+
       body {
         background: transparent;
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -116,70 +118,101 @@
       }
     </style>
   </head>
+
   <body>
     <div id="avatar-container"></div>
 
     <script>
-      // CHANGE THIS TO YOUR NETLIFY URL AFTER DEPLOY!
-
       const API_URL =
         "https://stream-avatar.netlify.app/.netlify/functions/avatars";
+
       const container = document.getElementById("avatar-container");
       const seenIds = new Set();
+      const MAX_AVATARS = 5;
+      let pollInterval = 5000;
+      let pollingHandle = null;
+
+      function startPolling() {
+        if (!pollingHandle) {
+          pollingHandle = setInterval(fetchAvatars, pollInterval);
+        }
+      }
+
+      function stopPolling() {
+        if (pollingHandle) {
+          clearInterval(pollingHandle);
+          pollingHandle = null;
+        }
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        document.hidden ? stopPolling() : startPolling();
+      });
 
       async function fetchAvatars() {
         try {
-          const response = await fetch(API_URL);
+          const response = await fetch(API_URL, { cache: "no-store" });
           const data = await response.json();
 
-          if (data.avatars) {
-            data.avatars.forEach((avatar) => {
-              if (!seenIds.has(avatar.id)) {
-                seenIds.add(avatar.id);
-                displayAvatar(avatar);
-              }
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching avatars:", error);
+          if (!data.avatars) return;
+
+          data.avatars.forEach((avatar) => {
+            if (!seenIds.has(avatar.id)) {
+              seenIds.add(avatar.id);
+              displayAvatar(avatar);
+            }
+          });
+        } catch (err) {
+          console.error("Avatar fetch error:", err);
         }
       }
 
       function displayAvatar(data) {
+        // Enforce max avatars
+        if (container.children.length >= MAX_AVATARS) {
+          container.lastElementChild?.remove();
+        }
+
         const card = document.createElement("div");
         card.className = "avatar-card";
-        card.id = `avatar-${data.id}`;
+        card.style.willChange = "transform, opacity";
 
         card.innerHTML = `
-        <img class="avatar-img" src="${data.image}" alt="${data.username}" onerror="this.src='https://via.placeholder.com/512x200/667eea/ffffff?text=Avatar+Loading...'">
-        <div class="avatar-info">
-          <div class="username">@${data.username}</div>
-          <div class="prompt">${data.prompt}</div>
-        </div>
-        <div class="timer-bar"></div>
-      `;
+      <img
+        class="avatar-img"
+        src="${data.image}"
+        alt="${data.username}"
+        loading="lazy"
+        decoding="async"
+        onerror="this.src='https://via.placeholder.com/512x200/667eea/ffffff?text=Avatar'"
+      />
 
-        container.appendChild(card);
+      <div class="avatar-info">
+        <div class="username">@${data.username}</div>
+        <div class="prompt">${data.prompt}</div>
+      </div>
 
-        // Animate timer bar (5 minutes)
+      <div class="timer-bar"></div>
+    `;
+
+        container.prepend(card);
+
         const timerBar = card.querySelector(".timer-bar");
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           timerBar.style.width = "0%";
-        }, 100);
+        });
 
-        // Remove after 5 minutes
         setTimeout(() => {
           card.classList.add("fade-out");
           setTimeout(() => {
             card.remove();
             seenIds.delete(data.id);
-          }, 500);
-        }, 300000); // 5 minutes
+          }, 400);
+        }, 180000); // 3 minutes (better for OBS)
       }
 
-      // Poll every 3 seconds
-      setInterval(fetchAvatars, 3000);
-      fetchAvatars(); // Initial load
+      startPolling();
+      fetchAvatars();
     </script>
   </body>
 </html>
