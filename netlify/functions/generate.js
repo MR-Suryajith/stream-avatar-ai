@@ -1,86 +1,81 @@
 // netlify/functions/generate.js
-// Called by Nightbot: !generate [prompt]
-// Uses Pollinations.ai — FREE, no API key needed
-// URL: https://YOUR-SITE.netlify.app/.netlify/functions/generate?user=USERNAME&prompt=a+glowing+sword&secret=TOKEN
+// Called by Nightbot !generate [prompt]
+// Uses Pollinations.ai (free AI images) + Upstash Redis
 
-const { getStore } = require("@netlify/blobs");
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const NIGHTBOT_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
+
+const HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Content-Type": "text/plain",
+};
+
+async function redisGet(key) {
+  const r = await fetch(`${REDIS_URL}/get/${key}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  const d = await r.json();
+  if (!d.result) return [];
+  try {
+    return JSON.parse(d.result);
+  } catch {
+    return [];
+  }
+}
+
+async function redisSet(key, value) {
+  await fetch(`${REDIS_URL}/set/${key}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ value: JSON.stringify(value) }),
+  });
+}
 
 exports.handler = async (event) => {
-  const headers = {
-    "Access-Control-Allow-Origin": "*",
-    "Content-Type": "text/plain",
-  };
+  if (event.httpMethod === "OPTIONS")
+    return { statusCode: 200, headers: HEADERS, body: "" };
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
-  }
+  const { user, prompt, secret } = event.queryStringParameters || {};
 
-  const params = event.queryStringParameters || {};
-  const { user, prompt, secret } = params;
-
-  // ── Auth check ─────────────────────────────────
-  const NIGHTBOT_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
-  if (secret !== NIGHTBOT_SECRET) {
-    return { statusCode: 401, headers, body: "❌ Unauthorized" };
-  }
-
-  if (!user) {
-    return { statusCode: 400, headers, body: "❌ Missing user parameter" };
-  }
-
-  if (!prompt || prompt.trim().length < 2) {
+  if (secret !== NIGHTBOT_SECRET)
+    return { statusCode: 401, headers: HEADERS, body: "Unauthorized" };
+  if (!user) return { statusCode: 400, headers: HEADERS, body: "Missing user" };
+  if (!prompt || prompt.trim().length < 2)
     return {
       statusCode: 400,
-      headers,
-      body: `@${user} ➜ Usage: !generate [your prompt] e.g. !generate a neon dragon`,
+      headers: HEADERS,
+      body: `@${user} Usage: !generate [prompt] e.g. !generate a neon dragon`,
     };
-  }
 
-  // ── Build Pollinations image URL ──────────────
-  // Pollinations.ai is a free AI image API — no key needed
-  // Format: https://image.pollinations.ai/prompt/{prompt}?width=512&height=512&nologo=true
-  const cleanPrompt = prompt.trim().slice(0, 200); // cap prompt length
-  const encodedPrompt = encodeURIComponent(cleanPrompt);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&seed=${Date.now()}`;
+  const cleanPrompt = prompt.trim().slice(0, 200);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&seed=${Date.now()}`;
 
-  // ── Store in Netlify Blobs so overlay can fetch it ──
   try {
-    const store = getStore("overlay-queue");
-
-    // Get existing queue
-    let queue = [];
-    try {
-      const raw = await store.get("image-queue", { type: "json" });
-      queue = Array.isArray(raw) ? raw : [];
-    } catch (_) {
-      queue = [];
-    }
-
-    // Add new item, cap queue at 10
+    const queue = await redisGet("img_queue");
     queue.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `img-${Date.now()}`,
       username: user,
       prompt: cleanPrompt,
       imageUrl,
       ts: Date.now(),
       shown: false,
     });
-    if (queue.length > 10) queue = queue.slice(-10);
-
-    await store.setJSON("image-queue", queue);
-
+    await redisSet("img_queue", queue.slice(-10));
     return {
       statusCode: 200,
-      headers,
-      body: `@${user} 🎨 Generating "${cleanPrompt}" — watch the stream! ✨`,
+      headers: HEADERS,
+      body: `@${user} Generating "${cleanPrompt}" — watch the stream! ✨`,
     };
   } catch (err) {
-    console.error("Blob store error:", err);
-    // Even if storage fails, return a useful message
+    console.error("[generate]", err.message);
     return {
       statusCode: 200,
-      headers,
-      body: `@${user} 🎨 Generating your image now — watch the stream!`,
+      headers: HEADERS,
+      body: `@${user} Generating your image now — watch the stream! ✨`,
     };
   }
 };
