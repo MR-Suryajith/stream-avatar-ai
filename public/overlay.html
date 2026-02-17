@@ -174,33 +174,38 @@
         }
       }
 
-      function displayAvatar(data) {
-        // Enforce max avatars
-        if (container.children.length >= MAX_AVATARS) {
-          container.lastElementChild?.remove();
-        }
+function displayAvatar(data) {
+  // Enforce max avatars
+  if (container.children.length >= MAX_AVATARS) {
+    container.lastElementChild?.remove();
+  }
 
-        const card = document.createElement("div");
-        card.className = "avatar-card";
+  const card = document.createElement("div");
+  card.className = "avatar-card";
 
-        // Create image with better error handling
-        const img = document.createElement("img");
-        img.className = "avatar-img";
-        img.src = data.image;
-        img.alt = data.username;
-        img.loading = "lazy";
+  // Create image with better handling
+  const img = document.createElement("img");
+  img.className = "avatar-img";
+  img.alt = data.username;
 
-        // Handle image load error
-        img.onerror = function () {
-          this.src =
-            "https://via.placeholder.com/512x200/667eea/ffffff?text=Loading...";
-          // Retry loading after 2 seconds
-          setTimeout(() => {
-            this.src = data.image;
-          }, 2000);
-        };
+  // Set a loading placeholder first
+  img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='200'%3E%3Crect width='512' height='200' fill='%23667eea'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-size='20'%3ELoading...%3C/text%3E%3C/svg%3E";
 
-        card.innerHTML = `
+  // Load actual image
+  const actualImage = new Image();
+  actualImage.crossOrigin = "anonymous";
+  actualImage.onload = function() {
+    img.src = data.image;
+  };
+  actualImage.onerror = function() {
+    // Retry once after 3 seconds
+    setTimeout(() => {
+      img.src = data.image + "&retry=1";
+    }, 3000);
+  };
+  actualImage.src = data.image;
+
+  card.innerHTML = `
     <div class="avatar-img-container"></div>
     <div class="avatar-info">
       <div class="username">@${data.username}</div>
@@ -209,27 +214,26 @@
     <div class="timer-bar"></div>
   `;
 
-        // Insert image into container
-        card.querySelector(".avatar-img-container").appendChild(img);
+  // Insert image into container
+  card.querySelector(".avatar-img-container").appendChild(img);
 
-        container.prepend(card);
+  container.prepend(card);
 
-        // Animate timer bar
-        const timerBar = card.querySelector(".timer-bar");
-        requestAnimationFrame(() => {
-          timerBar.style.width = "0%";
-        });
+  // Animate timer bar
+  const timerBar = card.querySelector(".timer-bar");
+  requestAnimationFrame(() => {
+    timerBar.style.width = "0%";
+  });
 
-        // Remove after 3 minutes
-        setTimeout(() => {
-          card.classList.add("fade-out");
-          setTimeout(() => {
-            card.remove();
-            seenIds.delete(data.id);
-          }, 400);
-        }, 180000);
-      }
-
+  // Remove after 3 minutes
+  setTimeout(() => {
+    card.classList.add("fade-out");
+    setTimeout(() => {
+      card.remove();
+      seenIds.delete(data.id);
+    }, 400);
+  }, 180000);
+}
       startPolling();
       fetchAvatars();
     </script>
