@@ -116,6 +116,13 @@
       .avatar-card:hover {
         animation: float 3s ease-in-out infinite;
       }
+      .avatar-img-container {
+        width: 100%;
+        height: 200px;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #2d2d2d;
+      }
     </style>
   </head>
 
@@ -123,9 +130,8 @@
     <div id="avatar-container"></div>
 
     <script>
-      // ✅ FIXED: Changed "avatars " to "avatar" (no trailing space!)
-      const API_URL =
-        "https://stream-avatar.netlify.app/.netlify/functions/avatar";
+      // ✅ FIXED: NO TRAILING SPACE!
+      const API_URL = "https://stream-avatar.netlify.app/.netlify/functions/avatar";
 
       const container = document.getElementById("avatar-container");
       const seenIds = new Set();
@@ -176,40 +182,52 @@
 
         const card = document.createElement("div");
         card.className = "avatar-card";
-        card.style.willChange = "transform, opacity";
+
+        // Create image with better error handling
+        const img = document.createElement("img");
+        img.className = "avatar-img";
+        img.src = data.image;
+        img.alt = data.username;
+        img.loading = "lazy";
+
+        // Handle image load error
+        img.onerror = function () {
+          this.src =
+            "https://via.placeholder.com/512x200/667eea/ffffff?text=Loading...";
+          // Retry loading after 2 seconds
+          setTimeout(() => {
+            this.src = data.image;
+          }, 2000);
+        };
 
         card.innerHTML = `
-      <img
-        class="avatar-img"
-        src="${data.image}"
-        alt="${data.username}"
-        loading="lazy"
-        decoding="async"
-        onerror="this.src='https://via.placeholder.com/512x200/667eea/ffffff?text=Avatar'"
-      />
+    <div class="avatar-img-container"></div>
+    <div class="avatar-info">
+      <div class="username">@${data.username}</div>
+      <div class="prompt">${data.prompt}</div>
+    </div>
+    <div class="timer-bar"></div>
+  `;
 
-      <div class="avatar-info">
-        <div class="username">@${data.username}</div>
-        <div class="prompt">${data.prompt}</div>
-      </div>
-
-      <div class="timer-bar"></div>
-    `;
+        // Insert image into container
+        card.querySelector(".avatar-img-container").appendChild(img);
 
         container.prepend(card);
 
+        // Animate timer bar
         const timerBar = card.querySelector(".timer-bar");
         requestAnimationFrame(() => {
           timerBar.style.width = "0%";
         });
 
+        // Remove after 3 minutes
         setTimeout(() => {
           card.classList.add("fade-out");
           setTimeout(() => {
             card.remove();
             seenIds.delete(data.id);
           }, 400);
-        }, 180000); // 3 minutes (better for OBS)
+        }, 180000);
       }
 
       startPolling();
