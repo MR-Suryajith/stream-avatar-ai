@@ -7,25 +7,31 @@ const HEADERS = {
   "Content-Type": "application/json",
 };
 
-async function redisGet(key) {
-  const r = await fetch(`${REDIS_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+async function redisPipeline(commands) {
+  const r = await fetch(`${REDIS_URL}/pipeline`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(commands),
   });
-  const d = await r.json();
-  if (!d.result) return [];
+  return r.json();
+}
+
+async function redisGet(key) {
+  const result = await redisPipeline([["GET", key]]);
+  const val = result?.[0]?.result;
+  if (!val) return [];
   try {
-    return JSON.parse(d.result);
+    return JSON.parse(val);
   } catch {
     return [];
   }
 }
 
 async function redisSet(key, value) {
-  // Correct Upstash REST format: /set/key/value
-  const encoded = encodeURIComponent(JSON.stringify(value));
-  await fetch(`${REDIS_URL}/set/${key}/${encoded}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-  });
+  await redisPipeline([["SET", key, JSON.stringify(value)]]);
 }
 
 exports.handler = async (event) => {
@@ -49,11 +55,11 @@ exports.handler = async (event) => {
       body: JSON.stringify({ items: newItems }),
     };
   } catch (err) {
-    console.error("[poll-images]", err.message);
+    console.error("[poll-images error]", err.message);
     return {
-      statusCode: 200,
+      statusCode: 500,
       headers: HEADERS,
-      body: JSON.stringify({ items: [] }),
+      body: JSON.stringify({ error: err.message, items: [] }),
     };
   }
 };
