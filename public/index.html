@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Stream Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ─────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --gold:    #f5c842;
+  --gold2:   #ff9d00;
+  --purple:  #a259ff;
+  --blue:    #38d9f5;
+  --dark:    #080810;
+  --card-bg: rgba(8, 8, 18, 0.93);
+}
+
+body {
+  background: transparent;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* ─────────────────────────────────────────────
+   SUPERCHAT CARDS  (left side, stacked)
+───────────────────────────────────────────── */
+#sc-stack {
+  position: fixed;
+  left: 18px;
+  bottom: 220px;           /* sits above the image panel */
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.sc-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: var(--card-bg);
+  border: 1px solid rgba(245,200,66,.25);
+  border-left: 3px solid var(--gold);
+  border-radius: 14px;
+  padding: 10px 16px 10px 10px;
+  width: 310px;
+  backdrop-filter: blur(24px);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04) inset,
+    0 12px 40px rgba(0,0,0,.55),
+    0 0 28px rgba(245,200,66,.12);
+  transform: translateX(-340px);
+  opacity: 0;
+  animation: scIn .55s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.sc-card.out {
+  animation: scOut .4s ease-in forwards !important;
+}
+
+@keyframes scIn  { to { transform:translateX(0); opacity:1; } }
+@keyframes scOut { to { transform:translateX(-30px); opacity:0; } }
+
+/* Tier colours */
+.sc-card.bronze { --gold:#cd7f32; --gold2:#a05000; }
+.sc-card.silver { --gold:#c0c0c0; --gold2:#888;    }
+.sc-card.gold   { --gold:#f5c842; --gold2:#ff9d00; }
+.sc-card.diamond {
+  --gold:#38d9f5; --gold2:#7c4dff;
+  border-left-color: var(--blue);
+  box-shadow: 0 0 40px rgba(56,217,245,.2), 0 12px 40px rgba(0,0,0,.55);
+  animation: scIn .55s cubic-bezier(.34,1.56,.64,1) forwards,
+             diamondPulse 2s .6s ease-in-out infinite alternate;
+}
+@keyframes diamondPulse {
+  from { box-shadow: 0 0 24px rgba(56,217,245,.15), 0 12px 40px rgba(0,0,0,.55); }
+  to   { box-shadow: 0 0 52px rgba(56,217,245,.4),  0 12px 40px rgba(0,0,0,.55); }
+}
+
+.sc-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.sc-avatar {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(245,200,66,.5);
+  display: block;
+}
+.sc-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: conic-gradient(var(--gold), var(--gold2), var(--gold)) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+  animation: spin 3s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.sc-badge {
+  position: absolute;
+  bottom: -3px; right: -3px;
+  font-size: 13px;
+  filter: drop-shadow(0 1px 4px rgba(0,0,0,.6));
+}
+.sc-info { flex:1; min-width:0; }
+.sc-eyebrow {
+  font-family: 'Syne', sans-serif;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--gold);
+  opacity: .8;
+  text-transform: uppercase;
+}
+.sc-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.15;
+}
+.sc-amount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: .3px;
+}
+.sc-msg {
+  font-size: 11px;
+  color: rgba(255,255,255,.6);
+  margin-top: 3px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────
+   AI IMAGE PANEL  (bottom strip — Shorts style)
+   Designed for 9:16 / 1080×1920 Shorts overlay
+───────────────────────────────────────────── */
+#ai-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  z-index: 100;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Dark gradient so panel floats over video */
+#ai-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top,
+    rgba(4,4,12,.96) 0%,
+    rgba(4,4,12,.85) 60%,
+    transparent 100%);
+  z-index: 0;
+}
+
+.ai-slot {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  animation: aiSlideUp .6s cubic-bezier(.34,1.56,.64,1) forwards;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.ai-slot.out {
+  animation: aiSlideDown .4s ease-in forwards !important;
+}
+@keyframes aiSlideUp   { to { opacity:1; transform:translateY(0); } }
+@keyframes aiSlideDown { to { opacity:0; transform:translateY(20px); } }
+
+/* The generated image thumbnail */
+.ai-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.ai-thumb {
+  width: 140px;
+  height: 140px;
+  border-radius: 16px;
+  object-fit: cover;
+  display: block;
+  border: 2px solid rgba(162,89,255,.5);
+  box-shadow: 0 0 24px rgba(162,89,255,.35), 0 8px 24px rgba(0,0,0,.6);
+  background: rgba(162,89,255,.1);
+}
+/* Shimmer loader while image loads */
+.ai-thumb.loading {
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%,100% { background: rgba(162,89,255,.1); }
+  50%      { background: rgba(162,89,255,.25); }
+}
+.ai-glow-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 20px;
+  background: conic-gradient(#a259ff, #38d9f5, #f5c842, #a259ff);
+  opacity: .6;
+  z-index: -1;
+  animation: spin 4s linear infinite;
+  filter: blur(3px);
+}
+
+/* Text beside image */
+.ai-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 200px;
+}
+.ai-tag {
+  font-family: 'Syne', sans-serif;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--purple);
+  opacity: .9;
+  text-transform: uppercase;
+}
+.ai-username {
+  font-family: 'Syne', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+}
+.ai-prompt {
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-style: italic;
+}
+.ai-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--purple);
+  display: inline-block;
+  margin-right: 5px;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink {
+  0%,100% { opacity:1; } 50% { opacity:.2; }
+}
+
+/* Scrolling queue indicator */
+#ai-count {
+  position: fixed;
+  bottom: 210px;
+  right: 18px;
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(162,89,255,.7);
+  z-index: 101;
+  pointer-events: none;
+}
+
+/* ─────────────────────────────────────────────
+   LIVE TICKER (very top)
+───────────────────────────────────────────── */
+#ticker-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 28px;
+  background: linear-gradient(90deg, rgba(162,89,255,.15), rgba(56,217,245,.08), rgba(162,89,255,.15));
+  border-bottom: 1px solid rgba(162,89,255,.2);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  z-index: 200;
+  pointer-events: none;
+}
+.ticker-inner {
+  white-space: nowrap;
+  font-family: 'Syne', sans-serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,.4);
+  animation: tickerScroll 20s linear infinite;
+}
+@keyframes tickerScroll {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(-100%); }
+}
+</style>
+</head>
+<body>
+
+<!-- Top ticker bar -->
+<div id="ticker-bar">
+  <span class="ticker-inner">
+    ✦ LIVE STREAM &nbsp;&nbsp;&nbsp; USE !generate [prompt] TO CREATE AI ART &nbsp;&nbsp;&nbsp;
+    SUPERCHATS SHOWN LIVE &nbsp;&nbsp;&nbsp; ✦ LIVE STREAM &nbsp;&nbsp;&nbsp;
+    USE !generate [prompt] TO CREATE AI ART &nbsp;&nbsp;&nbsp; SUPERCHATS SHOWN LIVE &nbsp;&nbsp;&nbsp;
+  </span>
+</div>
+
+<!-- Superchat stack -->
+<div id="sc-stack"></div>
+
+<!-- AI image panel at bottom -->
+<div id="ai-panel"></div>
+
+<!-- Queue counter -->
+<div id="ai-count"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONFIG — replace YOUR-SITE with your Netlify domain
+// ═══════════════════════════════════════════════════
+const BASE_URL = 'https://stream-avatar.netlify.app';   // ← EDIT THIS
+const POLL_MS  = 3500;
+
+// ═══════════════════════════════════════════════════
+//  SUPERCHAT LOGIC
+// ═══════════════════════════════════════════════════
+const scStack = document.getElementById('sc-stack');
+
+function getTier(amountStr) {
+  const n = parseFloat(String(amountStr).replace(/[^0-9.]/g, '')) || 0;
+  if (n >= 50)  return 'diamond';
+  if (n >= 20)  return 'gold';
+  if (n >= 10)  return 'silver';
+  return 'bronze';
+}
+
+const tierEmoji = { bronze:'💰', silver:'🥈', gold:'🏆', diamond:'💎' };
+
+function fallbackAvatar(name) {
+  return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(name)}&size=80`;
+}
+
+function showSuperChat(sc) {
+  while (scStack.children.length >= 3) dismissSC(scStack.firstElementChild);
+
+  const tier = getTier(sc.amount);
+  const card = document.createElement('div');
+  card.className = `sc-card ${tier}`;
+  card.innerHTML = `
+    <div class="sc-avatar-wrap">
+      <img class="sc-avatar"
+        src="${sc.avatar || fallbackAvatar(sc.name)}"
+        onerror="this.src='${fallbackAvatar(sc.name)}'"
+        alt="${esc(sc.name)}"/>
+      <div class="sc-ring"></div>
+      <span class="sc-badge">${tierEmoji[tier]}</span>
+    </div>
+    <div class="sc-info">
+      <div class="sc-eyebrow">✦ Super Chat</div>
+      <div class="sc-name">${esc(sc.name)}</div>
+      <div class="sc-amount">${esc(sc.amount)}</div>
+      ${sc.message ? `<div class="sc-msg">${esc(sc.message)}</div>` : ''}
+    </div>`;
+  scStack.appendChild(card);
+  setTimeout(() => dismissSC(card), 10000);
+}
+
+function dismissSC(card) {
+  if (!card?.parentNode) return;
+  card.classList.add('out');
+  setTimeout(() => card.remove(), 400);
+}
+
+async function pollSuperchats() {
+  try {
+    const r = await fetch(`${BASE_URL}/.netlify/functions/superchat`);
+    const d = await r.json();
+    (d.superchats || []).forEach(showSuperChat);
+  } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════
+//  AI IMAGE PANEL LOGIC
+// ═══════════════════════════════════════════════════
+const aiPanel    = document.getElementById('ai-panel');
+const aiCount    = document.getElementById('ai-count');
+let   aiQueue    = [];
+let   aiShowing  = false;
+
+function updateCount() {
+  aiCount.textContent = aiQueue.length > 0 ? `+${aiQueue.length} in queue` : '';
+}
+
+function showNextAI() {
+  if (aiShowing || aiQueue.length === 0) return;
+  aiShowing = true;
+  const item = aiQueue.shift();
+  updateCount();
+  displayAICard(item);
+}
+
+function displayAICard(item) {
+  // Clear old slot
+  Array.from(aiPanel.querySelectorAll('.ai-slot')).forEach(s => {
+    s.classList.add('out');
+    setTimeout(() => s.remove(), 400);
+  });
+
+  const slot = document.createElement('div');
+  slot.className = 'ai-slot';
+  slot.innerHTML = `
+    <div class="ai-thumb-wrap">
+      <div class="ai-glow-ring"></div>
+      <img class="ai-thumb loading" id="ai-img-${item.id}"
+        alt="${esc(item.prompt)}"/>
+    </div>
+    <div class="ai-meta">
+      <div class="ai-tag"><span class="ai-dot"></span>AI Generated</div>
+      <div class="ai-username">${esc(item.username)}</div>
+      <div class="ai-prompt">"${esc(item.prompt)}"</div>
+    </div>`;
+  aiPanel.appendChild(slot);
+
+  // Load image
+  const img = slot.querySelector(`#ai-img-${item.id}`);
+  const tempImg = new Image();
+  tempImg.onload = () => {
+    img.src = item.imageUrl;
+    img.classList.remove('loading');
+  };
+  tempImg.onerror = () => {
+    img.src = fallbackAvatar(item.username);
+    img.classList.remove('loading');
+  };
+  tempImg.src = item.imageUrl;
+
+  // Show for 12 seconds then dismiss
+  setTimeout(() => {
+    slot.classList.add('out');
+    setTimeout(() => {
+      slot.remove();
+      aiShowing = false;
+      showNextAI();
+    }, 400);
+  }, 12000);
+}
+
+async function pollAIImages() {
+  try {
+    const r = await fetch(`${BASE_URL}/.netlify/functions/poll-images`);
+    const d = await r.json();
+    if (d.items?.length) {
+      aiQueue.push(...d.items);
+      updateCount();
+      showNextAI();
+    }
+  } catch (_) {}
+}
+
+// ═══════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════
+function esc(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════
+// //  DEMO MODE (remove in production — just comment out)
+// // ═══════════════════════════════════════════════════
+// function runDemo() {
+//   // Demo superchat
+//   setTimeout(() => showSuperChat({
+//     id:'d1', name:'StreamKing99', amount:'$50.00',
+//     message:'You are the GOAT! 🔥', avatar:''
+//   }), 1500);
+
+//   setTimeout(() => showSuperChat({
+//     id:'d2', name:'NightOwl', amount:'$10.00',
+//     message:'Best stream ever fr', avatar:''
+//   }), 4000);
+
+//   // Demo AI generated image
+//   setTimeout(() => {
+//     aiQueue.push({
+//       id: 'demo1',
+//       username: 'PixelFan',
+//       prompt: 'a cyberpunk cat riding a neon dragon',
+//       imageUrl: 'https://image.pollinations.ai/prompt/cyberpunk%20cat%20riding%20neon%20dragon?width=512&height=512&nologo=true',
+//     });
+//     updateCount();
+//     showNextAI();
+//   }, 7000);
+
+//   setTimeout(() => {
+//     aiQueue.push({
+//       id: 'demo2',
+//       username: 'StreamViewer',
+//       prompt: 'a glowing sword in a magical forest',
+//       imageUrl: 'https://image.pollinations.ai/prompt/glowing%20sword%20magical%20forest?width=512&height=512&nologo=true',
+//     });
+//     updateCount();
+//   }, 14000);
+// }
+// runDemo();
+// ── end demo mode ──
+
+// ═══════════════════════════════════════════════════
+//  START POLLING (uncomment for production)
+// ═══════════════════════════════════════════════════
+ setInterval(pollSuperchats, POLL_MS);
+ setInterval(pollAIImages,   POLL_MS);
+</script>
+</body>
+</html>
