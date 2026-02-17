@@ -1,8 +1,9 @@
 // netlify/functions/generate.js
-// Stores prompt immediately — image-proxy handles the actual fetching
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const NIGHTBOT_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
+const POLLINATIONS_KEY = process.env.POLLINATIONS_KEY || "";
+const SITE_URL = process.env.URL || "https://stream-avatar.netlify.app";
 
 const HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -24,6 +25,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS")
     return { statusCode: 200, headers: HEADERS, body: "" };
   const { user, prompt, secret } = event.queryStringParameters || {};
+
   if (secret !== NIGHTBOT_SECRET)
     return { statusCode: 401, headers: HEADERS, body: "Unauthorized" };
   if (!user) return { statusCode: 400, headers: HEADERS, body: "Missing user" };
@@ -36,15 +38,19 @@ exports.handler = async (event) => {
 
   const cleanPrompt = prompt.trim().slice(0, 200);
   const seed = Math.floor(Math.random() * 999999);
-  const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&enhance=true&seed=${seed}`;
 
-  // Store the pollinations URL — image-proxy will serve it to the overlay
+  // Direct Pollinations URL (turbo model = fast ~5-10s)
+  let pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&model=turbo&seed=${seed}`;
+  if (POLLINATIONS_KEY) pollinationsUrl += `&key=${POLLINATIONS_KEY}`;
+
+  // Proxy URL — served from same domain, no CORS issues
+  const proxyUrl = `${SITE_URL}/.netlify/functions/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
+
   await redisSet("img_latest", {
     id: `img-${Date.now()}`,
     username: user,
     prompt: cleanPrompt,
-    // Overlay calls image-proxy which fetches from Pollinations server-side
-    imageUrl: `https://stream-avatar.netlify.app/.netlify/functions/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`,
+    imageUrl: proxyUrl,
     ts: Date.now(),
   });
 
