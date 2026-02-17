@@ -8,35 +8,15 @@ const HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
 };
 
-async function redisGet(key) {
-  const r = await fetch(`${REDIS_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-  });
-  const d = await r.json();
-  const val = d?.result;
-  if (!val) return [];
-  // val is already a plain string — parse once
-  try {
-    const parsed = JSON.parse(val);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-async function redisSet(key, arr) {
-  // Store as plain JSON string — NOT double-stringified
-  const r = await fetch(`${REDIS_URL}`, {
+async function redisSet(key, value) {
+  await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    // Correct: ["SET", key, "actual json string"]
-    body: JSON.stringify(["SET", key, JSON.stringify(arr)]),
+    body: JSON.stringify(["SET", key, JSON.stringify(value), "EX", "300"]),
   });
-  const d = await r.json();
-  console.log("[redisSet response]", JSON.stringify(d));
 }
 
 exports.handler = async (event) => {
@@ -52,33 +32,32 @@ exports.handler = async (event) => {
     return {
       statusCode: 400,
       headers: HEADERS,
-      body: `@${user} Usage: !generate [prompt] e.g. !generate a neon dragon`,
+      body: `@${user} - Usage: !generate [prompt]  e.g. !generate a neon dragon`,
     };
 
   const cleanPrompt = prompt.trim().slice(0, 200);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&seed=${Date.now()}`;
 
-  const queue = await redisGet("img_queue");
+  // Build Pollinations URL with quality params
+  const seed = Math.floor(Math.random() * 999999);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&enhance=true&seed=${seed}`;
 
-  const newItem = {
+  // Pre-warm the image — tell Pollinations to start generating NOW
+  // This runs in background while Nightbot shows the chat message
+  fetch(imageUrl).catch(() => {});
+
+  const item = {
     id: `img-${Date.now()}`,
     username: user,
     prompt: cleanPrompt,
     imageUrl,
     ts: Date.now(),
-    shown: false,
   };
 
-  queue.push(newItem);
-  await redisSet("img_queue", queue.slice(-10));
-
-  // Verify the write actually worked
-  const verify = await redisGet("img_queue");
-  console.log("[verify queue length]", verify.length);
+  await redisSet("img_latest", item);
 
   return {
     statusCode: 200,
     headers: HEADERS,
-    body: `@${user} Generating "${cleanPrompt}" - watch the stream! (queue: ${verify.length})`,
+    body: `@${user} Generating "${cleanPrompt}" - watch the stream!`,
   };
 };
