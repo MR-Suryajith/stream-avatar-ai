@@ -1,4 +1,6 @@
 // netlify/functions/poll-images.js
+// Overlay calls this every 3s — returns latest image if it's new
+
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -12,24 +14,22 @@ async function redisGet(key) {
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const d = await r.json();
-  const val = d?.result;
-  if (!val) return [];
+  if (!d.result) return null;
   try {
-    const parsed = JSON.parse(val);
-    return Array.isArray(parsed) ? parsed : [];
+    return JSON.parse(d.result);
   } catch {
-    return [];
+    return null;
   }
 }
 
-async function redisSet(key, arr) {
+async function redisDel(key) {
   await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(["SET", key, JSON.stringify(arr)]),
+    body: JSON.stringify(["DEL", key]),
   });
 }
 
@@ -37,19 +37,28 @@ exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS")
     return { statusCode: 200, headers: HEADERS, body: "" };
 
-  const queue = await redisGet("img_queue");
-  const newItems = queue.filter((i) => !i.shown);
-
-  if (newItems.length > 0) {
-    const updated = queue.map((i) =>
-      newItems.find((n) => n.id === i.id) ? { ...i, shown: true } : i,
-    );
-    await redisSet("img_queue", updated.slice(-10));
+  try {
+    const item = await redisGet("img_latest");
+    if (!item) {
+      return {
+        statusCode: 200,
+        headers: HEADERS,
+        body: JSON.stringify({ item: null }),
+      };
+    }
+    // Delete it so it only shows once
+    await redisDel("img_latest");
+    return {
+      statusCode: 200,
+      headers: HEADERS,
+      body: JSON.stringify({ item }),
+    };
+  } catch (err) {
+    console.error("[poll-images]", err.message);
+    return {
+      statusCode: 200,
+      headers: HEADERS,
+      body: JSON.stringify({ item: null }),
+    };
   }
-
-  return {
-    statusCode: 200,
-    headers: HEADERS,
-    body: JSON.stringify({ items: newItems }),
-  };
 };
