@@ -9,6 +9,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: HEADERS, body: "" };
 
   const { prompt } = event.queryStringParameters || {};
+  console.log("[image-proxy] Request for prompt:", prompt);
   if (!prompt)
     return { statusCode: 400, headers: HEADERS, body: "Missing prompt" };
 
@@ -27,10 +28,11 @@ exports.handler = async (event) => {
         }),
       },
     );
+    console.log("[image-proxy] HF Response Status:", response.status);
 
     if (!response.ok) {
       const err = await response.text();
-      console.error("[HF error]", err);
+      console.error("[image-proxy] HF Error Body:", err);
       // Return placeholder
       return placeholder(HEADERS);
     }

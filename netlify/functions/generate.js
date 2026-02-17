@@ -10,7 +10,9 @@ const HEADERS = {
 };
 
 async function redisSet(key, value) {
-  await fetch(`${REDIS_URL}`, {
+  console.log("[redisSet] Setting key:", key);
+  try {
+    const res = await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
@@ -18,9 +20,15 @@ async function redisSet(key, value) {
     },
     body: JSON.stringify(["SET", key, JSON.stringify(value), "EX", "300"]),
   });
+  const data = await res.json();
+  console.log("[redisSet] Result:", JSON.stringify(data));
+  } catch (err) {
+    console.error("[redisSet] Error:", err);
+  }
 }
 
 exports.handler = async (event) => {
+  console.log("[generate] Incoming request:", event.httpMethod, event.queryStringParameters);
   if (event.httpMethod === "OPTIONS")
     return { statusCode: 200, headers: HEADERS, body: "" };
   const { user, prompt, secret } = event.queryStringParameters || {};
