@@ -20,7 +20,6 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
   background:linear-gradient(to top,rgba(4,4,12,.97) 0%,rgba(4,4,12,.88) 55%,transparent 100%);
   z-index:0;
 }
-
 .ai-slot {
   position:relative; z-index:1; display:flex; align-items:center;
   gap:14px; padding:14px 20px;
@@ -31,6 +30,7 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
 @keyframes slideUp   { to { opacity:1; transform:translateY(0); } }
 @keyframes slideDown { to { opacity:0; transform:translateY(24px); } }
 
+/* Image wrap */
 .ai-thumb-wrap { position:relative; flex-shrink:0; width:148px; height:148px; }
 .ai-glow {
   position:absolute; inset:-6px; border-radius:22px;
@@ -38,27 +38,51 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
   opacity:.6; z-index:-1; filter:blur(4px);
   animation:spin 3s linear infinite;
 }
-@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes spin { to{transform:rotate(360deg)} }
 
+/* Loading shimmer */
+.ai-loading {
+  position:absolute; inset:0; border-radius:18px;
+  border:2px solid rgba(162,89,255,.4);
+  background:rgba(162,89,255,.08);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:8px;
+  overflow:hidden;
+}
+.ai-loading::after {
+  content:''; position:absolute; left:0; right:0; height:50%;
+  background:linear-gradient(to bottom,transparent,rgba(162,89,255,.2),transparent);
+  animation:scan 1.8s ease-in-out infinite;
+}
+@keyframes scan { 0%{top:-50%} 100%{top:110%} }
+.ai-loading-icon { font-size:26px; animation:pulse 1.4s ease-in-out infinite; z-index:1; }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+.ai-loading-text { font-family:'Syne',sans-serif; font-size:8px; letter-spacing:2px; color:rgba(162,89,255,.7); text-transform:uppercase; z-index:1; }
+.ai-prog-wrap { position:absolute; bottom:8px; left:10px; right:10px; height:3px; background:rgba(255,255,255,.07); border-radius:2px; z-index:1; }
+.ai-prog-bar  { height:100%; width:0; background:linear-gradient(90deg,#a259ff,#38d9f5); border-radius:2px; transition:width .6s ease; }
+
+/* Actual image */
 .ai-thumb {
+  position:absolute; inset:0;
   width:148px; height:148px; border-radius:18px; object-fit:cover;
   border:2px solid rgba(162,89,255,.6);
   box-shadow:0 0 28px rgba(162,89,255,.4),0 8px 28px rgba(0,0,0,.7);
-  background:rgba(162,89,255,.08);
-  animation:imgReveal .5s ease forwards;
+  opacity:0; transition:opacity .6s ease;
 }
-@keyframes imgReveal { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+.ai-thumb.show { opacity:1; }
 
+/* Text */
 .ai-meta { display:flex; flex-direction:column; gap:5px; max-width:260px; }
 .ai-tag  { font-family:'Syne',sans-serif; font-size:9px; letter-spacing:3.5px; color:var(--purple); text-transform:uppercase; display:flex; align-items:center; gap:6px; }
-.ai-dot  { width:6px; height:6px; border-radius:50%; background:var(--purple); animation:blink 1.1s ease-in-out infinite; flex-shrink:0; }
+.ai-dot  { width:6px; height:6px; border-radius:50%; background:var(--purple); animation:blink 1.1s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
 .ai-username { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#fff; line-height:1; }
 .ai-prompt   { font-size:13px; color:rgba(255,255,255,.55); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-style:italic; }
+.ai-status   { font-size:11px; color:rgba(56,217,245,.65); margin-top:2px; }
 
-#ai-queue-badge { position:fixed; bottom:198px; left:20px; font-family:'Syne',sans-serif; font-size:10px; letter-spacing:2px; color:rgba(162,89,255,.65); z-index:101; pointer-events:none; }
 #conn-dot { position:fixed; top:10px; right:10px; width:7px; height:7px; border-radius:50%; background:#ff4f4f; z-index:300; pointer-events:none; transition:background .4s; }
 #conn-dot.ok { background:#3ddc84; box-shadow:0 0 7px #3ddc84; }
+#queue-badge { position:fixed; bottom:198px; left:20px; font-family:'Syne',sans-serif; font-size:10px; letter-spacing:2px; color:rgba(162,89,255,.6); z-index:101; pointer-events:none; }
 
 #ticker-bar { position:fixed; top:0; left:0; right:0; height:26px; background:linear-gradient(90deg,rgba(162,89,255,.12),rgba(56,217,245,.06),rgba(162,89,255,.12)); border-bottom:1px solid rgba(162,89,255,.18); display:flex; align-items:center; overflow:hidden; z-index:200; pointer-events:none; }
 .ticker-text { white-space:nowrap; font-family:'Syne',sans-serif; font-size:9px; letter-spacing:3px; color:rgba(255,255,255,.35); animation:ticker 22s linear infinite; }
@@ -75,23 +99,26 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
 </div>
 
 <div id="ai-panel"></div>
-<div id="ai-queue-badge"></div>
 <div id="conn-dot"></div>
+<div id="queue-badge"></div>
 
 <script>
 const BASE_URL = 'https://stream-avatar.netlify.app';
 const POLL_MS  = 3000;
 
-const aiPanel    = document.getElementById('ai-panel');
-const queueBadge = document.getElementById('ai-queue-badge');
-const connDot    = document.getElementById('conn-dot');
+const aiPanel  = document.getElementById('ai-panel');
+const connDot  = document.getElementById('conn-dot');
+const queueBadge = document.getElementById('queue-badge');
+
 let aiQueue   = [];
 let aiShowing = false;
 
 function setConn(ok) { connDot.className = ok ? 'ok' : ''; }
 function updateBadge() { queueBadge.textContent = aiQueue.length > 0 ? `+${aiQueue.length} in queue` : ''; }
 function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function showNextAI() {
@@ -102,6 +129,7 @@ function showNextAI() {
 }
 
 function displayAICard(item) {
+  // Remove old cards
   Array.from(aiPanel.querySelectorAll('.ai-slot')).forEach(s => {
     s.classList.add('out');
     setTimeout(() => s.remove(), 450);
@@ -109,33 +137,94 @@ function displayAICard(item) {
 
   const slot = document.createElement('div');
   slot.className = 'ai-slot';
-
-  // Image is already generated — just display it directly
   slot.innerHTML = `
     <div class="ai-thumb-wrap">
       <div class="ai-glow"></div>
-      <img class="ai-thumb" id="img-${item.id}"
-        src="${item.imageUrl}"
-        alt="${esc(item.prompt)}"
-        onerror="this.style.background='rgba(162,89,255,.2)'"/>
+      <div class="ai-loading" id="load-${item.id}">
+        <div class="ai-loading-icon">🎨</div>
+        <div class="ai-loading-text" id="ltxt-${item.id}">Generating...</div>
+        <div class="ai-prog-wrap"><div class="ai-prog-bar" id="prog-${item.id}"></div></div>
+      </div>
+      <img class="ai-thumb" id="img-${item.id}" alt="${esc(item.prompt)}"/>
     </div>
     <div class="ai-meta">
       <div class="ai-tag"><span class="ai-dot"></span>AI Generated</div>
       <div class="ai-username">${esc(item.username)}</div>
       <div class="ai-prompt">"${esc(item.prompt)}"</div>
+      <div class="ai-status" id="st-${item.id}">Generating image...</div>
     </div>`;
-
   aiPanel.appendChild(slot);
 
-  // Show for 20 seconds then dismiss
-  setTimeout(() => {
-    slot.classList.add('out');
+  const imgEl  = slot.querySelector(`#img-${item.id}`);
+  const loadEl = slot.querySelector(`#load-${item.id}`);
+  const progEl = slot.querySelector(`#prog-${item.id}`);
+  const stEl   = slot.querySelector(`#st-${item.id}`);
+  const ltxtEl = slot.querySelector(`#ltxt-${item.id}`);
+
+  let done = false;
+  let prog = 0;
+
+  // Smooth progress bar
+  const progInt = setInterval(() => {
+    if (done) return;
+    prog = Math.min(prog + 0.8, 88);
+    progEl.style.width = prog + '%';
+  }, 500);
+
+  // Status text updates
+  const steps = [
+    [5000,  'Processing prompt...'],
+    [12000, 'Painting image...'],
+    [22000, 'Adding details...'],
+    [35000, 'Almost there...'],
+  ];
+  const stepTimers = steps.map(([t, msg]) =>
+    setTimeout(() => { if (!done && stEl) stEl.textContent = msg; }, t)
+  );
+
+  // THE KEY FIX: Use an <img> tag to load Pollinations
+  // Browsers handle image loading + CORS better than fetch
+  // Pollinations returns the image when ready — browser waits automatically
+  imgEl.onload = () => {
+    if (done) return;
+    done = true;
+    clearInterval(progInt);
+    stepTimers.forEach(clearTimeout);
+    progEl.style.width = '100%';
+    if (stEl)   stEl.textContent   = 'Image ready!';
+    if (ltxtEl) ltxtEl.textContent = 'Done!';
     setTimeout(() => {
-      slot.remove();
-      aiShowing = false;
-      showNextAI();
-    }, 450);
-  }, 20000);
+      loadEl.style.opacity = '0';
+      loadEl.style.transition = 'opacity .4s';
+      setTimeout(() => { loadEl.style.display = 'none'; }, 400);
+      imgEl.classList.add('show');
+    }, 200);
+    // Show for 20s then dismiss
+    setTimeout(dismiss, 20000);
+  };
+
+  imgEl.onerror = () => {
+    if (done) return;
+    // Retry after 5 seconds — Pollinations may not be ready yet
+    setTimeout(() => {
+      imgEl.src = item.imageUrl + '&_r=' + Date.now();
+    }, 5000);
+  };
+
+  // Start loading — browser will wait for Pollinations to respond
+  imgEl.src = item.imageUrl;
+
+  // Hard limit: dismiss after 90 seconds no matter what
+  setTimeout(dismiss, 90000);
+
+  function dismiss() {
+    if (!slot.parentNode) return;
+    done = true;
+    clearInterval(progInt);
+    stepTimers.forEach(clearTimeout);
+    slot.classList.add('out');
+    setTimeout(() => { slot.remove(); aiShowing = false; showNextAI(); }, 450);
+  }
 }
 
 async function pollAIImages() {
