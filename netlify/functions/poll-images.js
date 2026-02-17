@@ -1,6 +1,4 @@
 // netlify/functions/poll-images.js
-// Overlay calls this every 3.5s to fetch newly generated AI images
-
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -23,13 +21,10 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value) {
-  await fetch(`${REDIS_URL}/set/${key}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+  // Correct Upstash REST format: /set/key/value
+  const encoded = encodeURIComponent(JSON.stringify(value));
+  await fetch(`${REDIS_URL}/set/${key}/${encoded}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
 }
 
@@ -40,12 +35,14 @@ exports.handler = async (event) => {
   try {
     const queue = await redisGet("img_queue");
     const newItems = queue.filter((i) => !i.shown);
+
     if (newItems.length > 0) {
       const updated = queue.map((i) =>
         newItems.find((n) => n.id === i.id) ? { ...i, shown: true } : i,
       );
       await redisSet("img_queue", updated.slice(-10));
     }
+
     return {
       statusCode: 200,
       headers: HEADERS,

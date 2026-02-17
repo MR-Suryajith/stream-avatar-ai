@@ -1,14 +1,11 @@
 // netlify/functions/generate.js
-// Called by Nightbot !generate [prompt]
-// Uses Pollinations.ai (free AI images) + Upstash Redis
-
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const NIGHTBOT_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
 
 const HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Content-Type": "text/plain",
+  "Content-Type": "text/plain; charset=utf-8",
 };
 
 async function redisGet(key) {
@@ -25,13 +22,9 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value) {
-  await fetch(`${REDIS_URL}/set/${key}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+  const encoded = encodeURIComponent(JSON.stringify(value));
+  await fetch(`${REDIS_URL}/set/${key}/${encoded}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
 }
 
@@ -68,14 +61,14 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: HEADERS,
-      body: `@${user} Generating "${cleanPrompt}" — watch the stream! ✨`,
+      body: `@${user} Generating "${cleanPrompt}" - watch the stream!`,
     };
   } catch (err) {
     console.error("[generate]", err.message);
     return {
       statusCode: 200,
       headers: HEADERS,
-      body: `@${user} Generating your image now — watch the stream! ✨`,
+      body: `@${user} Generating your image - watch the stream!`,
     };
   }
 };

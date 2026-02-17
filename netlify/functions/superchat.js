@@ -1,8 +1,4 @@
 // netlify/functions/superchat.js
-// Storage: Upstash Redis (free, no bin creation needed)
-// GET  → overlay polls for new superchats
-// POST → add a superchat
-
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const WEBHOOK_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
@@ -28,13 +24,9 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value) {
-  await fetch(`${REDIS_URL}/set/${key}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+  const encoded = encodeURIComponent(JSON.stringify(value));
+  await fetch(`${REDIS_URL}/set/${key}/${encoded}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
 }
 
@@ -42,7 +34,6 @@ exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS")
     return { statusCode: 200, headers: HEADERS, body: "" };
 
-  // GET: overlay polls for new superchats
   if (event.httpMethod === "GET") {
     try {
       const queue = await redisGet("sc_queue");
@@ -68,16 +59,14 @@ exports.handler = async (event) => {
     }
   }
 
-  // POST: add a superchat
   if (event.httpMethod === "POST") {
     const secret = event.headers["x-secret"] || "";
-    if (secret !== WEBHOOK_SECRET) {
+    if (secret !== WEBHOOK_SECRET)
       return {
         statusCode: 401,
         headers: HEADERS,
         body: JSON.stringify({ error: "Unauthorized" }),
       };
-    }
     try {
       const body = JSON.parse(event.body || "{}");
       const queue = await redisGet("sc_queue");
