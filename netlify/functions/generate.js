@@ -8,32 +8,32 @@ const HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
 };
 
-// Upstash Redis REST — correct way using pipeline
-async function redisPipeline(commands) {
-  const r = await fetch(`${REDIS_URL}/pipeline`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(commands),
-  });
-  return r.json();
-}
-
 async function redisGet(key) {
-  const result = await redisPipeline([["GET", key]]);
-  const val = result?.[0]?.result;
-  if (!val) return [];
+  const r = await fetch(`${REDIS_URL}/get/${key}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  const d = await r.json();
+  const val = d?.result;
+  if (!val || val === "null") return [];
   try {
-    return JSON.parse(val);
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
 async function redisSet(key, value) {
-  await redisPipeline([["SET", key, JSON.stringify(value)]]);
+  const r = await fetch(`${REDIS_URL}/set/${key}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ value: JSON.stringify(value) }),
+  });
+  const d = await r.json();
+  console.log("[redisSet result]", JSON.stringify(d));
 }
 
 exports.handler = async (event) => {
@@ -56,7 +56,15 @@ exports.handler = async (event) => {
   const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&seed=${Date.now()}`;
 
   try {
-    const queue = await redisGet("img_queue");
+    // Always start with empty array if get fails
+    let queue = [];
+    try {
+      queue = await redisGet("img_queue");
+    } catch (_) {
+      queue = [];
+    }
+    if (!Array.isArray(queue)) queue = [];
+
     queue.push({
       id: `img-${Date.now()}`,
       username: user,
@@ -65,7 +73,9 @@ exports.handler = async (event) => {
       ts: Date.now(),
       shown: false,
     });
+
     await redisSet("img_queue", queue.slice(-10));
+
     return {
       statusCode: 200,
       headers: HEADERS,

@@ -10,31 +10,30 @@ const HEADERS = {
   "Content-Type": "application/json",
 };
 
-async function redisPipeline(commands) {
-  const r = await fetch(`${REDIS_URL}/pipeline`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(commands),
-  });
-  return r.json();
-}
-
 async function redisGet(key) {
-  const result = await redisPipeline([["GET", key]]);
-  const val = result?.[0]?.result;
-  if (!val) return [];
+  const r = await fetch(`${REDIS_URL}/get/${key}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  const d = await r.json();
+  const val = d?.result;
+  if (!val || val === "null") return [];
   try {
-    return JSON.parse(val);
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
 async function redisSet(key, value) {
-  await redisPipeline([["SET", key, JSON.stringify(value)]]);
+  await fetch(`${REDIS_URL}/set/${key}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ value: JSON.stringify(value) }),
+  });
 }
 
 exports.handler = async (event) => {
@@ -43,7 +42,14 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === "GET") {
     try {
-      const queue = await redisGet("sc_queue");
+      let queue = [];
+      try {
+        queue = await redisGet("sc_queue");
+      } catch (_) {
+        queue = [];
+      }
+      if (!Array.isArray(queue)) queue = [];
+
       const newItems = queue.filter((s) => !s.shown);
       if (newItems.length > 0) {
         const updated = queue.map((s) =>
@@ -57,11 +63,10 @@ exports.handler = async (event) => {
         body: JSON.stringify({ superchats: newItems }),
       };
     } catch (err) {
-      console.error("[superchat GET error]", err.message);
       return {
-        statusCode: 500,
+        statusCode: 200,
         headers: HEADERS,
-        body: JSON.stringify({ error: err.message, superchats: [] }),
+        body: JSON.stringify({ superchats: [], error: err.message }),
       };
     }
   }
@@ -76,7 +81,14 @@ exports.handler = async (event) => {
       };
     try {
       const body = JSON.parse(event.body || "{}");
-      const queue = await redisGet("sc_queue");
+      let queue = [];
+      try {
+        queue = await redisGet("sc_queue");
+      } catch (_) {
+        queue = [];
+      }
+      if (!Array.isArray(queue)) queue = [];
+
       queue.push({
         id: `sc-${Date.now()}`,
         name: body.name || "Anonymous",
@@ -93,7 +105,6 @@ exports.handler = async (event) => {
         body: JSON.stringify({ ok: true }),
       };
     } catch (err) {
-      console.error("[superchat POST error]", err.message);
       return {
         statusCode: 500,
         headers: HEADERS,
