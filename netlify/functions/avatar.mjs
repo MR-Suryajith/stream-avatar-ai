@@ -17,8 +17,7 @@ export default async (request) => {
 
     // Use reliable placeholder service with custom text
     const encodedText = encodeURIComponent(`${user}'s ${prompt}`);
-    const imageUrl = `https://placehold.co/512x200/667eea/ffffff?text=${encodedText}`;
-
+const imageUrl = `https://www.pollinations.ai/prompt/cute%20chibi%20avatar%20of%20${encodeURIComponent(user)}%20as%20${encodeURIComponent(prompt)}?width=512&height=512&seed=${id}&nologo=true`;
     globalThis.recentAvatars.unshift({
       id,
       username: user,
