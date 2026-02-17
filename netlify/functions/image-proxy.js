@@ -1,59 +1,68 @@
 // netlify/functions/image-proxy.js
-// Fetches Pollinations image server-side — bypasses browser CORS completely
+// Uses Hugging Face Inference API — responds in 5-10s, within Netlify's 30s limit
+
+const HF_TOKEN = process.env.HF_TOKEN; // your Hugging Face token
 
 exports.handler = async (event) => {
-  const HEADERS_OUT = { "Access-Control-Allow-Origin": "*" };
+  const HEADERS = { "Access-Control-Allow-Origin": "*" };
   if (event.httpMethod === "OPTIONS")
-    return { statusCode: 200, headers: HEADERS_OUT, body: "" };
+    return { statusCode: 200, headers: HEADERS, body: "" };
 
-  const { url } = event.queryStringParameters || {};
-  if (!url)
-    return { statusCode: 400, headers: HEADERS_OUT, body: "Missing url" };
+  const { prompt } = event.queryStringParameters || {};
+  if (!prompt)
+    return { statusCode: 400, headers: HEADERS, body: "Missing prompt" };
 
-  const imageUrl = decodeURIComponent(url);
+  try {
+    const response = await fetch(
+      "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${HF_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: decodeURIComponent(prompt),
+          parameters: { width: 512, height: 512 },
+        }),
+      },
+    );
 
-  // Try up to 3 times with 8s timeout each
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-
-      const r = await fetch(imageUrl, {
-        signal: controller.signal,
-        headers: { "User-Agent": "Mozilla/5.0" },
-      });
-      clearTimeout(timer);
-
-      const ct = r.headers.get("content-type") || "";
-      if (r.ok && ct.startsWith("image/")) {
-        const buf = await r.arrayBuffer();
-        const b64 = Buffer.from(buf).toString("base64");
-        return {
-          statusCode: 200,
-          headers: {
-            ...HEADERS_OUT,
-            "Content-Type": ct,
-            "Cache-Control": "public, max-age=3600",
-          },
-          body: b64,
-          isBase64Encoded: true,
-        };
-      }
-      // Not an image yet — wait and retry
-      await new Promise((r) => setTimeout(r, 3000));
-    } catch (_) {
-      if (attempt < 3) await new Promise((r) => setTimeout(r, 3000));
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("[HF error]", err);
+      // Return placeholder
+      return placeholder(HEADERS);
     }
-  }
 
-  // All attempts failed — return placeholder
+    const ct = response.headers.get("content-type") || "image/jpeg";
+    const buf = await response.arrayBuffer();
+    const b64 = Buffer.from(buf).toString("base64");
+
+    return {
+      statusCode: 200,
+      headers: {
+        ...HEADERS,
+        "Content-Type": ct,
+        "Cache-Control": "public, max-age=3600",
+      },
+      body: b64,
+      isBase64Encoded: true,
+    };
+  } catch (err) {
+    console.error("[image-proxy error]", err.message);
+    return placeholder(HEADERS);
+  }
+};
+
+function placeholder(HEADERS) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
     <rect width="512" height="512" fill="#1a0a2e"/>
-    <text x="256" y="256" text-anchor="middle" fill="#a259ff" font-size="60">🎨</text>
+    <text x="256" y="256" text-anchor="middle" fill="#a259ff" font-size="80">🎨</text>
   </svg>`;
   return {
     statusCode: 200,
-    headers: { ...HEADERS_OUT, "Content-Type": "image/svg+xml" },
+    headers: { ...HEADERS, "Content-Type": "image/svg+xml" },
     body: svg,
   };
-};
+}

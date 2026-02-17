@@ -2,7 +2,6 @@
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const NIGHTBOT_SECRET = process.env.NIGHTBOT_SECRET || "change-me";
-const POLLINATIONS_KEY = process.env.POLLINATIONS_KEY || "";
 const SITE_URL = process.env.URL || "https://stream-avatar.netlify.app";
 
 const HEADERS = {
@@ -37,20 +36,15 @@ exports.handler = async (event) => {
     };
 
   const cleanPrompt = prompt.trim().slice(0, 200);
-  const seed = Math.floor(Math.random() * 999999);
 
-  // Direct Pollinations URL (turbo model = fast ~5-10s)
-  let pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&model=turbo&seed=${seed}`;
-  if (POLLINATIONS_KEY) pollinationsUrl += `&key=${POLLINATIONS_KEY}`;
-
-  // Proxy URL — served from same domain, no CORS issues
-  const proxyUrl = `${SITE_URL}/.netlify/functions/image-proxy?url=${encodeURIComponent(pollinationsUrl)}`;
+  // Image proxy URL — uses HuggingFace to generate, no CORS issues
+  const imageUrl = `${SITE_URL}/.netlify/functions/image-proxy?prompt=${encodeURIComponent(cleanPrompt)}`;
 
   await redisSet("img_latest", {
     id: `img-${Date.now()}`,
     username: user,
     prompt: cleanPrompt,
-    imageUrl: proxyUrl,
+    imageUrl,
     ts: Date.now(),
   });
 
