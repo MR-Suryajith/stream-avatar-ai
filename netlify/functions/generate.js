@@ -8,13 +8,15 @@ const HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
 };
 
+// Correct Upstash REST format: POST body is a JSON array ["COMMAND", "arg1", "arg2"]
 async function redisGet(key) {
   const r = await fetch(`${REDIS_URL}/get/${key}`, {
+    method: "GET",
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const d = await r.json();
   const val = d?.result;
-  if (!val || val === "null") return [];
+  if (!val || val === null) return [];
   try {
     const parsed = JSON.parse(val);
     return Array.isArray(parsed) ? parsed : [];
@@ -24,16 +26,18 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value) {
-  const r = await fetch(`${REDIS_URL}/set/${key}`, {
+  // Correct format: POST to /set/key with body ["SET","key","value"]
+  const r = await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+    body: JSON.stringify(["SET", key, JSON.stringify(value)]),
   });
   const d = await r.json();
-  console.log("[redisSet result]", JSON.stringify(d));
+  console.log("[redisSet]", JSON.stringify(d));
+  return d;
 }
 
 exports.handler = async (event) => {
@@ -56,13 +60,7 @@ exports.handler = async (event) => {
   const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&nologo=true&seed=${Date.now()}`;
 
   try {
-    // Always start with empty array if get fails
-    let queue = [];
-    try {
-      queue = await redisGet("img_queue");
-    } catch (_) {
-      queue = [];
-    }
+    let queue = await redisGet("img_queue");
     if (!Array.isArray(queue)) queue = [];
 
     queue.push({

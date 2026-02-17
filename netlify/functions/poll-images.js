@@ -9,11 +9,12 @@ const HEADERS = {
 
 async function redisGet(key) {
   const r = await fetch(`${REDIS_URL}/get/${key}`, {
+    method: "GET",
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const d = await r.json();
   const val = d?.result;
-  if (!val || val === "null") return [];
+  if (!val || val === null) return [];
   try {
     const parsed = JSON.parse(val);
     return Array.isArray(parsed) ? parsed : [];
@@ -23,14 +24,15 @@ async function redisGet(key) {
 }
 
 async function redisSet(key, value) {
-  await fetch(`${REDIS_URL}/set/${key}`, {
+  const r = await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ value: JSON.stringify(value) }),
+    body: JSON.stringify(["SET", key, JSON.stringify(value)]),
   });
+  return r.json();
 }
 
 exports.handler = async (event) => {
@@ -38,12 +40,7 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: HEADERS, body: "" };
 
   try {
-    let queue = [];
-    try {
-      queue = await redisGet("img_queue");
-    } catch (_) {
-      queue = [];
-    }
+    let queue = await redisGet("img_queue");
     if (!Array.isArray(queue)) queue = [];
 
     const newItems = queue.filter((i) => !i.shown);
