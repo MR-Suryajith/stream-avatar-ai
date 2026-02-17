@@ -20,6 +20,7 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
   background:linear-gradient(to top,rgba(4,4,12,.97) 0%,rgba(4,4,12,.88) 55%,transparent 100%);
   z-index:0;
 }
+
 .ai-slot {
   position:relative; z-index:1; display:flex; align-items:center;
   gap:14px; padding:14px 20px;
@@ -39,43 +40,21 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
 }
 @keyframes spin { to { transform:rotate(360deg); } }
 
-/* Loading box */
-.ai-loading-box {
-  width:148px; height:148px; border-radius:18px;
-  border:2px solid rgba(162,89,255,.5);
-  background:rgba(162,89,255,.08);
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  gap:10px; position:relative; overflow:hidden;
-}
-.ai-loading-box::after {
-  content:''; position:absolute; left:0; right:0; height:40%;
-  background:linear-gradient(to bottom,transparent,rgba(162,89,255,.15),rgba(56,217,245,.1),transparent);
-  animation:scan 2s ease-in-out infinite;
-}
-@keyframes scan { 0%{top:-40%} 100%{top:110%} }
-.ai-loading-icon { font-size:28px; animation:pulse 1.5s ease-in-out infinite; }
-@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
-.ai-loading-label { font-family:'Syne',sans-serif; font-size:8px; letter-spacing:2px; color:rgba(162,89,255,.7); text-transform:uppercase; }
-.ai-progress-wrap { position:absolute; bottom:10px; left:12px; right:12px; height:3px; background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden; }
-.ai-progress-bar  { height:100%; width:0%; background:linear-gradient(90deg,#a259ff,#38d9f5); border-radius:2px; transition:width .8s ease; }
-
-/* Actual image */
 .ai-thumb {
   width:148px; height:148px; border-radius:18px; object-fit:cover;
-  display:none; border:2px solid rgba(162,89,255,.6);
+  border:2px solid rgba(162,89,255,.6);
   box-shadow:0 0 28px rgba(162,89,255,.4),0 8px 28px rgba(0,0,0,.7);
+  background:rgba(162,89,255,.08);
+  animation:imgReveal .5s ease forwards;
 }
-.ai-thumb.visible { display:block; }
+@keyframes imgReveal { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
 
-/* Text */
 .ai-meta { display:flex; flex-direction:column; gap:5px; max-width:260px; }
 .ai-tag  { font-family:'Syne',sans-serif; font-size:9px; letter-spacing:3.5px; color:var(--purple); text-transform:uppercase; display:flex; align-items:center; gap:6px; }
 .ai-dot  { width:6px; height:6px; border-radius:50%; background:var(--purple); animation:blink 1.1s ease-in-out infinite; flex-shrink:0; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
 .ai-username { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#fff; line-height:1; }
 .ai-prompt   { font-size:13px; color:rgba(255,255,255,.55); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-style:italic; }
-.ai-status   { font-size:11px; color:rgba(56,217,245,.7); letter-spacing:.5px; margin-top:2px; }
 
 #ai-queue-badge { position:fixed; bottom:198px; left:20px; font-family:'Syne',sans-serif; font-size:10px; letter-spacing:2px; color:rgba(162,89,255,.65); z-index:101; pointer-events:none; }
 #conn-dot { position:fixed; top:10px; right:10px; width:7px; height:7px; border-radius:50%; background:#ff4f4f; z-index:300; pointer-events:none; transition:background .4s; }
@@ -130,126 +109,33 @@ function displayAICard(item) {
 
   const slot = document.createElement('div');
   slot.className = 'ai-slot';
+
+  // Image is already generated — just display it directly
   slot.innerHTML = `
     <div class="ai-thumb-wrap">
       <div class="ai-glow"></div>
-      <div class="ai-loading-box" id="loadbox-${item.id}">
-        <div class="ai-loading-icon">🎨</div>
-        <div class="ai-loading-label">Generating...</div>
-        <div class="ai-progress-wrap"><div class="ai-progress-bar" id="prog-${item.id}"></div></div>
-      </div>
-      <img class="ai-thumb" id="img-${item.id}" alt="${esc(item.prompt)}"/>
+      <img class="ai-thumb" id="img-${item.id}"
+        src="${item.imageUrl}"
+        alt="${esc(item.prompt)}"
+        onerror="this.style.background='rgba(162,89,255,.2)'"/>
     </div>
     <div class="ai-meta">
       <div class="ai-tag"><span class="ai-dot"></span>AI Generated</div>
       <div class="ai-username">${esc(item.username)}</div>
       <div class="ai-prompt">"${esc(item.prompt)}"</div>
-      <div class="ai-status" id="st-${item.id}">Connecting to AI...</div>
     </div>`;
+
   aiPanel.appendChild(slot);
 
-  const imgEl   = slot.querySelector(`#img-${item.id}`);
-  const loadbox = slot.querySelector(`#loadbox-${item.id}`);
-  const progEl  = slot.querySelector(`#prog-${item.id}`);
-  const stEl    = slot.querySelector(`#st-${item.id}`);
-
-  let loaded       = false;
-  let attempt      = 0;
-  const MAX_TRIES  = 20;       // 20 attempts × 5s = 100s max
-  const RETRY_MS   = 5000;     // retry every 5 seconds
-  let   progress   = 0;
-  let   dismissed  = false;
-
-  // Smooth progress bar — never reaches 100 until image loads
-  const progTimer = setInterval(() => {
-    if (loaded) return;
-    progress = Math.min(progress + 1.2, 90);
-    progEl.style.width = progress + '%';
-  }, 600);
-
-  // Status messages
-  const statusSteps = [
-    [4000,  'Processing prompt...'],
-    [10000, 'Painting the image...'],
-    [20000, 'Adding details...'],
-    [35000, 'Almost ready...'],
-    [50000, 'Taking a bit longer...'],
-  ];
-  const statusTimers = statusSteps.map(([t, msg]) =>
-    setTimeout(() => { if (stEl && !loaded) stEl.textContent = msg; }, t)
-  );
-
-  function onLoaded(src) {
-    if (loaded || dismissed) return;
-    loaded = true;
-    clearInterval(progTimer);
-    statusTimers.forEach(clearTimeout);
-    progEl.style.width = '100%';
-    if (stEl) stEl.textContent = 'Image ready!';
-
-    setTimeout(() => {
-      loadbox.style.display = 'none';
-      imgEl.src = src;
-      imgEl.classList.add('visible');
-    }, 300);
-
-    // Show for 20s after image loads then dismiss
-    setTimeout(dismiss, 20000);
-  }
-
-  function tryLoad() {
-    if (loaded || dismissed || attempt >= MAX_TRIES) {
-      if (!loaded && !dismissed) {
-        // Last resort — just set the src directly and hope browser handles it
-        imgEl.src = item.imageUrl;
-        imgEl.classList.add('visible');
-        loadbox.style.display = 'none';
-        if (stEl) stEl.textContent = 'Loading...';
-        setTimeout(dismiss, 20000);
-      }
-      return;
-    }
-    attempt++;
-
-    // Use fetch to check if image is ready (avoids browser caching issues)
-    fetch(item.imageUrl, { method: 'HEAD', cache: 'no-store' })
-      .then(r => {
-        const ct = r.headers.get('content-type') || '';
-        if (r.ok && ct.startsWith('image/')) {
-          // Image is ready — now load it properly
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload  = () => onLoaded(item.imageUrl);
-          img.onerror = () => setTimeout(tryLoad, RETRY_MS);
-          img.src     = item.imageUrl + `&_v=${attempt}`;
-        } else {
-          // Not ready yet — retry
-          setTimeout(tryLoad, RETRY_MS);
-        }
-      })
-      .catch(() => setTimeout(tryLoad, RETRY_MS));
-  }
-
-  // Start trying after 3 seconds (give Pollinations time to start)
-  setTimeout(tryLoad, 3000);
-
-  // Hard max 120 seconds then dismiss no matter what
-  setTimeout(dismiss, 120000);
-
-  function dismiss() {
-    if (dismissed) return;
-    dismissed = true;
-    cleared = true;
-    clearInterval(progTimer);
-    statusTimers.forEach(clearTimeout);
-    if (!slot.parentNode) return;
+  // Show for 20 seconds then dismiss
+  setTimeout(() => {
     slot.classList.add('out');
     setTimeout(() => {
       slot.remove();
       aiShowing = false;
       showNextAI();
     }, 450);
-  }
+  }, 20000);
 }
 
 async function pollAIImages() {
