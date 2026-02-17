@@ -1,0 +1,16 @@
+Checking: https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0
+Status: 404
+Body: Not Found
+---
+Checking: https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0
+Status: 200
+Success!
+---
+Checking: https://router.huggingface.co/models/runwayml/stable-diffusion-v1-5
+Status: 404
+Body: Not Found
+---
+Checking: https://router.huggingface.co/models/CompVis/stable-diffusion-v1-4
+Status: 404
+Body: Not Found
+---
