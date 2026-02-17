@@ -12,12 +12,11 @@ const HEADERS = {
 
 async function redisGet(key) {
   const r = await fetch(`${REDIS_URL}/get/${key}`, {
-    method: "GET",
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const d = await r.json();
   const val = d?.result;
-  if (!val || val === null) return [];
+  if (!val) return [];
   try {
     const parsed = JSON.parse(val);
     return Array.isArray(parsed) ? parsed : [];
@@ -26,16 +25,15 @@ async function redisGet(key) {
   }
 }
 
-async function redisSet(key, value) {
-  const r = await fetch(`${REDIS_URL}`, {
+async function redisSet(key, arr) {
+  await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(["SET", key, JSON.stringify(value)]),
+    body: JSON.stringify(["SET", key, JSON.stringify(arr)]),
   });
-  return r.json();
 }
 
 exports.handler = async (event) => {
@@ -43,29 +41,19 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers: HEADERS, body: "" };
 
   if (event.httpMethod === "GET") {
-    try {
-      let queue = await redisGet("sc_queue");
-      if (!Array.isArray(queue)) queue = [];
-
-      const newItems = queue.filter((s) => !s.shown);
-      if (newItems.length > 0) {
-        const updated = queue.map((s) =>
-          newItems.find((n) => n.id === s.id) ? { ...s, shown: true } : s,
-        );
-        await redisSet("sc_queue", updated.slice(-30));
-      }
-      return {
-        statusCode: 200,
-        headers: HEADERS,
-        body: JSON.stringify({ superchats: newItems }),
-      };
-    } catch (err) {
-      return {
-        statusCode: 200,
-        headers: HEADERS,
-        body: JSON.stringify({ superchats: [], error: err.message }),
-      };
+    const queue = await redisGet("sc_queue");
+    const newItems = queue.filter((s) => !s.shown);
+    if (newItems.length > 0) {
+      const updated = queue.map((s) =>
+        newItems.find((n) => n.id === s.id) ? { ...s, shown: true } : s,
+      );
+      await redisSet("sc_queue", updated.slice(-30));
     }
+    return {
+      statusCode: 200,
+      headers: HEADERS,
+      body: JSON.stringify({ superchats: newItems }),
+    };
   }
 
   if (event.httpMethod === "POST") {
@@ -76,33 +64,24 @@ exports.handler = async (event) => {
         headers: HEADERS,
         body: JSON.stringify({ error: "Unauthorized" }),
       };
-    try {
-      const body = JSON.parse(event.body || "{}");
-      let queue = await redisGet("sc_queue");
-      if (!Array.isArray(queue)) queue = [];
 
-      queue.push({
-        id: `sc-${Date.now()}`,
-        name: body.name || "Anonymous",
-        avatar: body.avatar || "",
-        amount: body.amount || "$5.00",
-        message: body.message || "",
-        ts: Date.now(),
-        shown: false,
-      });
-      await redisSet("sc_queue", queue.slice(-30));
-      return {
-        statusCode: 200,
-        headers: HEADERS,
-        body: JSON.stringify({ ok: true }),
-      };
-    } catch (err) {
-      return {
-        statusCode: 500,
-        headers: HEADERS,
-        body: JSON.stringify({ error: err.message }),
-      };
-    }
+    const body = JSON.parse(event.body || "{}");
+    const queue = await redisGet("sc_queue");
+    queue.push({
+      id: `sc-${Date.now()}`,
+      name: body.name || "Anonymous",
+      avatar: body.avatar || "",
+      amount: body.amount || "$5.00",
+      message: body.message || "",
+      ts: Date.now(),
+      shown: false,
+    });
+    await redisSet("sc_queue", queue.slice(-30));
+    return {
+      statusCode: 200,
+      headers: HEADERS,
+      body: JSON.stringify({ ok: true }),
+    };
   }
 
   return {

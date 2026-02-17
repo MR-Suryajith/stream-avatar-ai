@@ -9,12 +9,11 @@ const HEADERS = {
 
 async function redisGet(key) {
   const r = await fetch(`${REDIS_URL}/get/${key}`, {
-    method: "GET",
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
   });
   const d = await r.json();
   const val = d?.result;
-  if (!val || val === null) return [];
+  if (!val) return [];
   try {
     const parsed = JSON.parse(val);
     return Array.isArray(parsed) ? parsed : [];
@@ -23,46 +22,34 @@ async function redisGet(key) {
   }
 }
 
-async function redisSet(key, value) {
-  const r = await fetch(`${REDIS_URL}`, {
+async function redisSet(key, arr) {
+  await fetch(`${REDIS_URL}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(["SET", key, JSON.stringify(value)]),
+    body: JSON.stringify(["SET", key, JSON.stringify(arr)]),
   });
-  return r.json();
 }
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS")
     return { statusCode: 200, headers: HEADERS, body: "" };
 
-  try {
-    let queue = await redisGet("img_queue");
-    if (!Array.isArray(queue)) queue = [];
+  const queue = await redisGet("img_queue");
+  const newItems = queue.filter((i) => !i.shown);
 
-    const newItems = queue.filter((i) => !i.shown);
-
-    if (newItems.length > 0) {
-      const updated = queue.map((i) =>
-        newItems.find((n) => n.id === i.id) ? { ...i, shown: true } : i,
-      );
-      await redisSet("img_queue", updated.slice(-10));
-    }
-
-    return {
-      statusCode: 200,
-      headers: HEADERS,
-      body: JSON.stringify({ items: newItems }),
-    };
-  } catch (err) {
-    console.error("[poll-images error]", err.message);
-    return {
-      statusCode: 200,
-      headers: HEADERS,
-      body: JSON.stringify({ items: [], error: err.message }),
-    };
+  if (newItems.length > 0) {
+    const updated = queue.map((i) =>
+      newItems.find((n) => n.id === i.id) ? { ...i, shown: true } : i,
+    );
+    await redisSet("img_queue", updated.slice(-10));
   }
+
+  return {
+    statusCode: 200,
+    headers: HEADERS,
+    body: JSON.stringify({ items: newItems }),
+  };
 };
