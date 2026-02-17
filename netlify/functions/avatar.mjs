@@ -6,20 +6,18 @@ export default async (request) => {
   };
 
   globalThis.recentAvatars = globalThis.recentAvatars || [];
-
   const url = new URL(request.url);
-
-  // Check if this is a generate request (has user AND prompt params)
   const userParam = url.searchParams.get("user");
   const promptParam = url.searchParams.get("prompt");
 
-  // 🔹 GENERATE AVATAR (Nightbot) - if both params exist
   if (userParam && promptParam) {
     const user = userParam.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20);
     const prompt = promptParam.slice(0, 100);
     const id = Date.now();
 
-    const imageUrl = `https://image.pollinations.ai/prompt/cute%20chibi%20avatar%20of%20${encodeURIComponent(user)}%20as%20${encodeURIComponent(prompt)}%20kawaii%20colorful%203D%20render?width=512&height=512&seed=${id}&nologo=true`;
+    // Use reliable placeholder service with custom text
+    const encodedText = encodeURIComponent(`${user}'s ${prompt}`);
+    const imageUrl = `https://placehold.co/512x200/667eea/ffffff?text=${encodedText}`;
 
     globalThis.recentAvatars.unshift({
       id,
@@ -39,7 +37,7 @@ export default async (request) => {
     );
   }
 
-  // 🔹 FETCH AVATARS (OBS) - no params or missing params
+  // FETCH AVATARS (OBS) - no params or missing params
   return new Response(
     JSON.stringify({
       avatars: globalThis.recentAvatars,
