@@ -35,19 +35,29 @@ body { background:transparent; width:100vw; height:100vh; overflow:hidden; font-
 
 /* User Name Label */
 .ai-username {
-  margin-top: 20px;
-  background: rgba(0, 0, 0, 0.7);
+  margin-top: 24px;
+  background: linear-gradient(135deg, rgba(255,85,85,0.8) 0%, rgba(162,89,255,0.8) 100%);
   color: #fff;
-  padding: 10px 24px;
+  padding: 12px 32px;
   border-radius: 50px;
   font-family:'Syne',sans-serif;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255,255,255,0.1);
+  letter-spacing: 2px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 2px solid rgba(255,255,255,0.3);
   text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 32px rgba(162,89,255, 0.4);
+  /* Optional: Pop-in animation specifically for the text */
+  animation: floatName 3s ease-in-out infinite;
+}
+
+@keyframes floatName {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
 }
 
 /* Loading Spinner (Optional, simple) */
