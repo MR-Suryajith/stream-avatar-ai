@@ -76,11 +76,11 @@ exports.handler = async (event) => {
         return placeholder(HEADERS, "No generation ID returned by Leonardo");
       }
 
-      // 2. Poll for completion (try every 1.5 seconds, up to 12 times = 18s)
+      // 2. Poll for completion (try every 1.5 seconds, up to 5 times = 7.5s)
       let imageUrl = null;
       let attempts = 0;
 
-      while (attempts < 12) {
+      while (attempts < 5) {
         await sleep(1500);
         attempts++;
 
