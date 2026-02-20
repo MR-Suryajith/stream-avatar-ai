@@ -1,7 +1,12 @@
 // netlify/functions/image-proxy.js
-// Uses Hugging Face Inference API — responds in 5-10s, within Netlify's 30s limit
+// Uses Leonardo.ai API (requires LEONARDO_API_KEY)
+// Note: Leonardo generates images asynchronously, so we must poll until it is complete.
 
-const HF_TOKEN = process.env.HF_TOKEN; // your Hugging Face token
+const LEONARDO_API_KEY = process.env.LEONARDO_API_KEY;
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 exports.handler = async (event) => {
   const HEADERS = { "Access-Control-Allow-Origin": "*" };
@@ -10,35 +15,100 @@ exports.handler = async (event) => {
 
   const { prompt } = event.queryStringParameters || {};
   console.log("[image-proxy] Request for prompt:", prompt);
+
   if (!prompt)
     return { statusCode: 400, headers: HEADERS, body: "Missing prompt" };
 
-  try {
-    const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${HF_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: decodeURIComponent(prompt),
-          parameters: { width: 512, height: 512 },
-        }),
-      },
-    );
-    console.log("[image-proxy] HF Response Status:", response.status);
+  if (!LEONARDO_API_KEY) {
+    return placeholder(HEADERS, "Missing LEONARDO_API_KEY");
+  }
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error("[image-proxy] HF Error Body:", err);
-      // Return placeholder
-      return placeholder(HEADERS);
+  try {
+    // 1. Trigger Generation Job
+    const createRes = await fetch("https://cloud.leonardo.ai/api/rest/v1/generations", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LEONARDO_API_KEY}`,
+        "Content-Type": "application/json",
+        "accept": "application/json"
+      },
+      body: JSON.stringify({
+        prompt: decodeURIComponent(prompt),
+        height: 512,
+        width: 512,
+        num_images: 1,
+        alchemy: false,      // Forces premium features off
+        promptMagic: false,  // Forces premium features off
+        guidance_scale: 7,   // Standard SD setting
+      }),
+    });
+
+    if (!createRes.ok) {
+       const err = await createRes.text();
+       console.error("[image-proxy] Leonardo Create Error:", err);
+
+       let errMsg = `Status ${createRes.status}`;
+       try {
+         const j = JSON.parse(err);
+         if (j.error) errMsg = j.error;
+       } catch(e) {}
+       return placeholder(HEADERS, errMsg.slice(0, 50));
     }
 
-    const ct = response.headers.get("content-type") || "image/jpeg";
-    const buf = await response.arrayBuffer();
+    const createData = await createRes.json();
+    const generationId = createData.sdGenerationJob?.generationId;
+
+    if (!generationId) {
+      return placeholder(HEADERS, "No generation ID returned by Leonardo");
+    }
+
+    // 2. Poll for completion (try every 1.5 seconds, up to 12 times = 18s)
+    let imageUrl = null;
+    let attempts = 0;
+
+    while (attempts < 12) {
+      await sleep(1500);
+      attempts++;
+
+      const pollRes = await fetch(`https://cloud.leonardo.ai/api/rest/v1/generations/${generationId}`, {
+        headers: {
+          "Authorization": `Bearer ${LEONARDO_API_KEY}`,
+          "accept": "application/json"
+        }
+      });
+
+      if (!pollRes.ok) continue;
+
+      const pollData = await pollRes.json();
+      const status = pollData.generations_by_pk?.status;
+
+      console.log(`[image-proxy] Poll ${attempts}: Status = ${status}`);
+
+      if (status === "COMPLETE") {
+        const images = pollData.generations_by_pk.generated_images;
+        if (images && images.length > 0) {
+          imageUrl = images[0].url;
+          break;
+        }
+      } else if (status === "FAILED") {
+        return placeholder(HEADERS, "Leonardo Generation Status FAILED");
+      }
+    }
+
+    if (!imageUrl) {
+       return placeholder(HEADERS, "Timeout waiting for Leonardo to finish");
+    }
+
+    console.log(`[image-proxy] Image generated successfully. Fetching to proxy...`);
+
+    // 3. Fetch the actual image bits and proxy it as base64
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) {
+       return placeholder(HEADERS, "Failed to download image from Leonardo CDN");
+    }
+
+    const ct = imgRes.headers.get("content-type") || "image/jpeg";
+    const buf = await imgRes.arrayBuffer();
     const b64 = Buffer.from(buf).toString("base64");
 
     return {
@@ -53,14 +123,19 @@ exports.handler = async (event) => {
     };
   } catch (err) {
     console.error("[image-proxy error]", err.message);
-    return placeholder(HEADERS);
+    return placeholder(HEADERS, "Network or Timeout Error");
   }
 };
 
-function placeholder(HEADERS) {
+function placeholder(HEADERS, errMessage = "Generation Failed") {
+  // Sanitize the error message to safely embed in SVG
+  const safeMsg = String(errMessage).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
     <rect width="512" height="512" fill="#1a0a2e"/>
-    <text x="256" y="256" text-anchor="middle" fill="#a259ff" font-size="80">🎨</text>
+    <text x="256" y="220" text-anchor="middle" fill="#a259ff" font-size="80">🎨</text>
+    <text x="256" y="320" text-anchor="middle" fill="#ff5555" font-family="sans-serif" font-size="20">API Error:</text>
+    <text x="256" y="360" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="16">${safeMsg}</text>
   </svg>`;
   return {
     statusCode: 200,
