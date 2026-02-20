@@ -1,2 +1,2 @@
-Status: 410
-Body: {"error":"https://api-inference.huggingface.co is no longer supported. Please use https://router.huggingface.co instead."}
+Status: 401
+Body: {"error":"Invalid username or password."}
