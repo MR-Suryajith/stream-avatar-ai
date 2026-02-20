@@ -46,7 +46,7 @@ exports.handler = async (event) => {
           num_images: 1,
           alchemy: false,      // Forces premium features off
           promptMagic: false,  // Forces premium features off
-          guidance_scale: 7,   // Standard SD setting
+          guidance_scale: 12,   // Standard SD setting
         }),
       });
 

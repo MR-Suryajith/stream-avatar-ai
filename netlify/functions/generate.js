@@ -48,7 +48,7 @@ exports.handler = async (event) => {
   // Basic NSFW / profanity filter
   const restrictedWords = [
     "nsfw", "porn", "sex", "nude", "naked", "boobs", "ass", "dick", "pussy",
-    "vagina", "penis", "fuck", "bitch", "slut", "cock", "tit", "tits", "bikini", "bra",
+    "vagina", "penis", "fuck", "bitch", "slut", "cock", "tit", "tits","bikini", "bra",
     "shit", "cunt", "whore", "blowjob", "handjob", "cum", "jerk", "masturbate", "rape", "violence", "terrorist", "kill"
   ];
 
