@@ -45,6 +45,25 @@ exports.handler = async (event) => {
 
   const cleanPrompt = prompt.trim().slice(0, 200);
 
+  // Basic NSFW / profanity filter
+  const restrictedWords = [
+    "nsfw", "porn", "sex", "nude", "naked", "boobs", "ass", "dick", "pussy",
+    "vagina", "penis", "fuck", "bitch", "slut", "cock", "tit", "tits", "bikini", "bra",
+    "shit", "cunt", "whore", "blowjob", "handjob", "cum", "jerk", "masturbate", "rape", "violence", "terrorist", "kill"
+  ];
+
+  const lowerPrompt = cleanPrompt.toLowerCase();
+  for (const word of restrictedWords) {
+    const regex = new RegExp(`\\b${word}\\b`, "i");
+    if (regex.test(lowerPrompt)) {
+      return {
+        statusCode: 200, // Returning 200 so Nightbot prints the warning in chat
+        headers: HEADERS,
+        body: `@${user} Warning: Your prompt contains restricted words. Please keep it clean! 😇`,
+      };
+    }
+  }
+
   // Image proxy URL — uses HuggingFace to generate, no CORS issues
   const imageUrl = `${SITE_URL}/.netlify/functions/image-proxy?prompt=${encodeURIComponent(cleanPrompt)}`;
 
